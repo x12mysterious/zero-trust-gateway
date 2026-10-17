@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Zero Trust Gateway Demo</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
+    label { display: block; margin-top: 0.75rem; font-weight: 600; }
+    input, select, button { margin-top: 0.25rem; padding: 0.4rem; }
+    pre { background: #1e1e1e; color: #d4d4d4; padding: 1rem; overflow: auto; border-radius: 6px; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  </style>
+</head>
+<body>
+  <h1>Zero Trust Security Gateway</h1>
+  <p>Risk-adaptive step-up authentication demo. All service access goes through the gateway.</p>
+
+  <div class="row">
+    <div>
+      <label>Username</label>
+      <input id="username" value="bob" />
+      <label>Password</label>
+      <input id="password" type="password" value="fin2026!" />
+      <label>Device ID</label>
+      <input id="deviceId" value="DEV-BOB-001" />
+      <label>Device OS</label>
+      <select id="deviceOs">
+        <option>linux</option><option>windows</option><option>macos</option><option>xbox</option>
+      </select>
+      <label>Security Agent</label>
+      <select id="agent"><option value="true">Present</option><option value="false">Missing</option></select>
+      <label>Service</label>
+      <select id="service"><option value="hr">HR</option><option value="finance" selected>Finance</option><option value="admin">Admin</option></select>
+      <label>Path</label>
+      <input id="path" value="budgets" />
+    </div>
+    <div>
+      <label>Step-up Session ID</label>
+      <input id="sessionId" placeholder="From gateway response" />
+      <label>Step-up Code (simulated OTP)</label>
+      <input id="otpCode" placeholder="6-digit code" />
+      <label>Step-up Token</label>
+      <input id="stepUpToken" placeholder="After verification" />
+    </div>
+  </div>
+
+  <p style="margin-top:1rem">
+    <button onclick="login()">Login</button>
+    <button onclick="accessService()">Access via Gateway</button>
+    <button onclick="verifyStepUp()">Verify Step-up</button>
+  </p>
+  <pre id="output">Ready.</pre>
+
+  <script>
+    let token = "";
+    const out = (data) => document.getElementById("output").textContent = JSON.stringify(data, null, 2);
+    const headers = () => ({
+      "Authorization": "Bearer " + token,
+      "X-Device-ID": document.getElementById("deviceId").value,
+      "X-Device-OS": document.getElementById("deviceOs").value,
+      "X-Security-Agent": document.getElementById("agent").value,
+      ...(document.getElementById("stepUpToken").value ? {"X-Step-Up-Token": document.getElementById("stepUpToken").value} : {})
+    });
+
+    async function login() {
+      const r = await fetch("/auth/login", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({username: document.getElementById("username").value, password: document.getElementById("password").value})
+      });
+      const data = await r.json();
+      if (r.ok) token = data.access_token;
+      out(data);
+    }
+
+    async function accessService() {
+      const svc = document.getElementById("service").value;
+      const path = document.getElementById("path").value;
+      const r = await fetch(`/gateway/${svc}/${path}`, {headers: headers()});
+      const data = await r.json();
+      if (data.step_up_session_id) document.getElementById("sessionId").value = data.step_up_session_id;
+      out(data);
+    }
+
+    async function verifyStepUp() {
+      const r = await fetch("/auth/step-up/verify", {
+        method: "POST",
+        headers: {"Content-Type": "application/json", "Authorization": "Bearer " + token},
+        body: JSON.stringify({session_id: document.getElementById("sessionId").value, code: document.getElementById("otpCode").value})
+      });
+      const data = await r.json();
+      if (data.step_up_token) document.getElementById("stepUpToken").value = data.step_up_token;
+      out(data);
+    }
+  </script>
+</body>
+</html>
